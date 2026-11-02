@@ -16,13 +16,13 @@ use super::{conv, descriptor::DescriptorCounts, RawTlasInstance};
 use crate::TlasInstance;
 
 impl super::DeviceShared {
-    /// Locks pipeline creation for this device when the driver cannot compile concurrently.
+    /// Locks shader compilation for this device when the driver cannot compile concurrently.
     ///
-    /// Hold the returned guard across `vkCreate*Pipelines`; it is `None` on other drivers.
-    fn pipeline_creation_guard(&self) -> Option<parking_lot::MutexGuard<'_, ()>> {
+    /// Hold the guard across shader-module or pipeline creation; it is `None` on other drivers.
+    fn shader_compilation_guard(&self) -> Option<parking_lot::MutexGuard<'_, ()>> {
         self.workarounds
-            .contains(super::Workarounds::SERIALIZE_PIPELINE_CREATION)
-            .then(|| self.pipeline_creation.lock())
+            .contains(super::Workarounds::SERIALIZE_SHADER_COMPILATION)
+            .then(|| self.shader_compilation.lock())
     }
 
     /// Set the name of `object` to `name`.
@@ -687,6 +687,7 @@ impl super::Device {
 
         let raw = unsafe {
             profiling::scope!("vkCreateShaderModule");
+            let _serialized = self.shared.shader_compilation_guard();
             self.shared
                 .raw
                 .create_shader_module(&vk_info, None)
@@ -2177,7 +2178,7 @@ impl crate::Device for super::Device {
 
         let mut raw_vec = {
             profiling::scope!("vkCreateGraphicsPipelines");
-            let _serialized = self.shared.pipeline_creation_guard();
+            let _serialized = self.shared.shader_compilation_guard();
             unsafe {
                 self.shared
                     .raw
@@ -2261,7 +2262,7 @@ impl crate::Device for super::Device {
 
         let mut raw_vec = {
             profiling::scope!("vkCreateComputePipelines");
-            let _serialized = self.shared.pipeline_creation_guard();
+            let _serialized = self.shared.shader_compilation_guard();
             unsafe {
                 self.shared
                     .raw
@@ -2399,7 +2400,7 @@ impl crate::Device for super::Device {
             .as_ref()
             .unwrap();
         let pipelines = {
-            let _serialized = self.shared.pipeline_creation_guard();
+            let _serialized = self.shared.shader_compilation_guard();
             unsafe {
                 fns.create_ray_tracing_pipelines(
                     vk::DeferredOperationKHR::null(),

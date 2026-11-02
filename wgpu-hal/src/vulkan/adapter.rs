@@ -2300,7 +2300,7 @@ impl super::Instance {
             transient_saves_memory: Some(supports_lazily_allocated),
             ..wgt::AdapterInfo::new(device_type, wgt::Backend::Vulkan)
         };
-        let workarounds = vendor_workarounds(phd_capabilities.properties.vendor_id);
+        let workarounds = vendor_workarounds(info.vendor, &info.name);
 
         if let Some(driver) = phd_capabilities.driver {
             if driver.conformance_version.major == 0 {
@@ -2920,7 +2920,7 @@ impl super::Adapter {
             sampler_cache: Mutex::new(super::sampler::SamplerCache::new(
                 self.private_caps.maximum_samplers,
             )),
-            pipeline_creation: Mutex::new(()),
+            shader_compilation: Mutex::new(()),
             memory_allocations_counter: Default::default(),
 
             texture_identity_factory: super::ResourceIdentityFactory::new(),
@@ -3394,8 +3394,8 @@ fn supports_bgra8unorm_storage(
     }
 }
 
-/// Driver workarounds selected from the adapter's PCI vendor ID.
-fn vendor_workarounds(vendor_id: u32) -> super::Workarounds {
+/// Driver workarounds selected from the adapter's vendor and device name.
+fn vendor_workarounds(vendor_id: u32, device_name: &str) -> super::Workarounds {
     use crate::auxil::db;
 
     // TODO: only enable for particular devices
@@ -3409,8 +3409,10 @@ fn vendor_workarounds(vendor_id: u32) -> super::Workarounds {
         vendor_id == db::nvidia::VENDOR,
     );
     workarounds.set(
-        super::Workarounds::SERIALIZE_PIPELINE_CREATION,
-        vendor_id == db::arm::VENDOR,
+        super::Workarounds::SERIALIZE_SHADER_COMPILATION,
+        vendor_id == db::arm::VENDOR
+            || (vendor_id == db::imgtec::VENDOR
+                && (device_name.contains("Rogue") || device_name.contains("BXM-8-256"))),
     );
     workarounds
 }
@@ -3599,18 +3601,39 @@ mod tests {
     }
 
     #[test]
-    fn only_arm_serializes_pipeline_creation() {
-        assert!(
-            vendor_workarounds(db::arm::VENDOR).contains(Workarounds::SERIALIZE_PIPELINE_CREATION)
-        );
+    fn powervr_serializes_shader_compilation() {
+        for name in [
+            "PowerVR Rogue GE8320",
+            "PowerVR Rogue GE8322",
+            "PowerVR B-Series BXM-8-256",
+        ] {
+            assert!(
+                vendor_workarounds(db::imgtec::VENDOR, name)
+                    .contains(Workarounds::SERIALIZE_SHADER_COMPILATION),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn unaffected_adapters_keep_parallel_shader_compilation() {
+        assert!(vendor_workarounds(db::arm::VENDOR, "Mali-G57")
+            .contains(Workarounds::SERIALIZE_SHADER_COMPILATION));
         for vendor in [
             db::amd::VENDOR,
-            db::imgtec::VENDOR,
             db::intel::VENDOR,
             db::nvidia::VENDOR,
             db::qualcomm::VENDOR,
         ] {
-            assert!(!vendor_workarounds(vendor).contains(Workarounds::SERIALIZE_PIPELINE_CREATION));
+            assert!(!vendor_workarounds(vendor, "PowerVR Rogue GE8320")
+                .contains(Workarounds::SERIALIZE_SHADER_COMPILATION));
+        }
+        for name in ["PowerVR DXT-48-1536", "PowerVR BXM-4-64", ""] {
+            assert!(
+                !vendor_workarounds(db::imgtec::VENDOR, name)
+                    .contains(Workarounds::SERIALIZE_SHADER_COMPILATION),
+                "{name}"
+            );
         }
     }
 }
