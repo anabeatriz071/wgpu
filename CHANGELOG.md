@@ -52,6 +52,7 @@ Bottom level categories:
 
 #### Metal
 
+- Make texture atomics visible to later passes on drivers that otherwise read the value from before them, such as Apple's paravirtual GPU.
 - Fix crashes when configuring HDR color spaces by dereferencing dynamically resolved CoreGraphics globals. By @stuartparmenter in [#10175](https://github.com/gfx-rs/wgpu/pull/10175).
 
 #### Vulkan

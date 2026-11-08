@@ -1256,6 +1256,28 @@ impl crate::Device for super::Device {
                 }
             }
 
+            for entry in desc.entries {
+                let layout = desc
+                    .layout
+                    .entries
+                    .iter()
+                    .find(|layout_entry| layout_entry.binding == entry.binding)
+                    .expect("internal error: no layout entry found with binding slot");
+                if let wgt::BindingType::StorageTexture {
+                    access: wgt::StorageTextureAccess::Atomic,
+                    ..
+                } = layout.ty
+                {
+                    let start = entry.resource_index as usize;
+                    let end = start + entry.count.max(1) as usize;
+                    bg.atomic_textures.extend(
+                        desc.textures[start..end]
+                            .iter()
+                            .map(|tex| tex.view.as_raw()),
+                    );
+                }
+            }
+
             self.counters.bind_groups.add(1);
 
             Ok(bg)
