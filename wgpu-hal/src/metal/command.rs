@@ -43,6 +43,7 @@ impl Default for super::CommandState {
             vertex_buffer_size_map: Default::default(),
             immediates: Vec::new(),
             pending_timer_queries: Vec::new(),
+            atomic_textures: Vec::new(),
         }
     }
 }
@@ -255,6 +256,25 @@ impl super::CommandEncoder {
             }
         }
         self.state.blit.as_ref().unwrap().clone()
+    }
+
+    /// Runs the pass described in [`super::atomic_visibility`] for the
+    /// textures the pass that just ended bound for atomics.
+    fn make_atomics_visible(&mut self) {
+        if self.state.atomic_textures.is_empty() {
+            return;
+        }
+        let device = &self.shared.device;
+        let pipelines = self
+            .shared
+            .atomic_touch
+            .get_or_init(|| super::atomic_visibility::TouchPipelines::new(device));
+        if let (Some(pipelines), Some(raw)) = (pipelines, self.raw_cmd_buf.as_ref()) {
+            // SAFETY: the bind groups that hold these textures, and so the
+            // textures, outlive the command buffer.
+            autoreleasepool(|_| unsafe { pipelines.encode(raw, &self.state.atomic_textures) });
+        }
+        self.state.atomic_textures.clear();
     }
 
     pub(super) fn leave_blit(&mut self) {
@@ -550,6 +570,7 @@ impl crate::CommandEncoder for super::CommandEncoder {
             encoder.endEncoding();
         }
         self.state.pending_timer_queries.clear();
+        self.state.atomic_textures.clear();
         let had_command_buffer = self.raw_cmd_buf.is_some();
         // Clear the Option first so the underlying `metal::CommandBuffer` is
         // dropped before we update the counter.
@@ -1092,6 +1113,7 @@ impl crate::CommandEncoder for super::CommandEncoder {
 
     unsafe fn end_render_pass(&mut self) {
         self.state.render.take().unwrap().endEncoding();
+        self.make_atomics_visible();
     }
 
     unsafe fn set_bind_group(
@@ -1101,6 +1123,13 @@ impl crate::CommandEncoder for super::CommandEncoder {
         group: &super::BindGroup,
         dynamic_offsets: &[wgt::DynamicOffset],
     ) {
+        if self.state.render.is_some() || self.state.compute.is_some() {
+            for &texture in &group.atomic_textures {
+                if !self.state.atomic_textures.contains(&texture) {
+                    self.state.atomic_textures.push(texture);
+                }
+            }
+        }
         let bg_info = layout.bind_group_infos[group_index as usize]
             .as_ref()
             .unwrap();
@@ -1766,6 +1795,7 @@ impl crate::CommandEncoder for super::CommandEncoder {
     }
     unsafe fn end_compute_pass(&mut self) {
         self.state.compute.take().unwrap().endEncoding();
+        self.make_atomics_visible();
     }
 
     unsafe fn set_compute_pipeline(&mut self, pipeline: &super::ComputePipeline) {

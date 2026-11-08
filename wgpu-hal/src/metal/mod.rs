@@ -21,6 +21,7 @@ end of the VS buffer table.
         TODO: Eventually all deprecated features should be abstracted and use new api when available."
 )]
 mod adapter;
+mod atomic_visibility;
 mod command;
 mod conv;
 mod device;
@@ -410,6 +411,8 @@ struct AdapterShared {
     private_texture_format_caps: PrivateTextureFormatCapabilities,
     settings: Settings,
     presentation_timer: time::PresentationTimer,
+    /// Compiled on first use; see [`atomic_visibility`].
+    atomic_touch: OnceLock<Option<atomic_visibility::TouchPipelines>>,
 }
 
 #[cfg(send_sync)]
@@ -432,6 +435,7 @@ impl AdapterShared {
             device,
             settings: Settings::default(),
             presentation_timer: time::PresentationTimer::new(),
+            atomic_touch: OnceLock::new(),
         }
     }
 
@@ -1127,6 +1131,9 @@ pub struct BindGroup {
 
     argument_buffers: Vec<Retained<ProtocolObject<dyn MTLBuffer>>>,
     resources_to_use: HashMap<NonNull<ProtocolObject<dyn MTLResource>>, UseResourceInfo>,
+    /// Textures bound with [`wgt::StorageTextureAccess::Atomic`]; see
+    /// [`atomic_visibility`].
+    atomic_textures: Vec<NonNull<ProtocolObject<dyn MTLTexture>>>,
 }
 
 impl crate::DynBindGroup for BindGroup {}
@@ -1382,6 +1389,10 @@ struct CommandState {
 
     /// Timer query that should be executed when the next pass starts.
     pending_timer_queries: Vec<(QuerySet, u32)>,
+
+    /// Textures the current pass bound for atomics, touched when it ends; see
+    /// [`atomic_visibility`].
+    atomic_textures: Vec<NonNull<ProtocolObject<dyn MTLTexture>>>,
 }
 
 // Any state in this struct that may be dirty after an abandoned encoding must
