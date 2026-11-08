@@ -36,15 +36,17 @@ const TEXTURE_TYPES: [(MTLTextureType, &str, &str); 5] = [
     (MTLTextureType::Type3D, "texture3d", "uint3(0u)"),
 ];
 
-/// Sample types of atomic-capable pixel formats.
+/// Sample types of the 32-bit atomic-capable pixel formats.
 const SAMPLE_TYPES: [&str; 2] = ["uint", "int"];
 
 /// The MSL sample type to use for an atomic texture with `format`, as an
 /// index into [`SAMPLE_TYPES`].
+///
+/// `R64Uint` textures, which use `RG32Uint`, get `None`: Metal has no 32-bit
+/// read-write access to that format, and only 32-bit atomics were tested.
 fn sample_type(format: MTLPixelFormat) -> Option<usize> {
     match format {
-        // `R64Uint` textures use `RG32Uint`.
-        MTLPixelFormat::R32Uint | MTLPixelFormat::RG32Uint => Some(0),
+        MTLPixelFormat::R32Uint => Some(0),
         MTLPixelFormat::R32Sint => Some(1),
         _ => None,
     }
