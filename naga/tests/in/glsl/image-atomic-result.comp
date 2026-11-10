@@ -1,0 +1,15 @@
+#version 450
+// Image atomics whose return value, the texel's original value, is used.
+layout(local_size_x = 16) in;
+layout(r32ui, binding = 0) uniform uimage2D counter;
+layout(r32i, binding = 1) uniform iimage2D extremes;
+layout(r32ui, binding = 2) uniform uimage2D slots;
+void main() {
+    uint slot = imageAtomicAdd(counter, ivec2(0), 1u);
+    int lowest = imageAtomicMin(extremes, ivec2(0), int(gl_LocalInvocationIndex));
+    uint mask = imageAtomicOr(counter, ivec2(1, 0), 1u << slot)
+        & imageAtomicAnd(counter, ivec2(2, 0), ~0u)
+        ^ imageAtomicXor(counter, ivec2(3, 0), slot);
+    imageAtomicMax(extremes, ivec2(1, 0), lowest);
+    imageStore(slots, ivec2(int(slot), 0), uvec4(mask + uint(lowest)));
+}

@@ -164,6 +164,8 @@ pub enum FunctionError {
     InvalidImageAtomicFunction(crate::AtomicFunction),
     #[error("Image atomic value is invalid")]
     InvalidImageAtomicValue(Handle<crate::Expression>),
+    #[error("64-bit image atomics can't return a value, but {0:?} is their result")]
+    WideImageAtomicResult(Handle<crate::Expression>),
     #[error("Call to {function:?} is invalid")]
     InvalidCall {
         function: Handle<crate::Function>,
@@ -644,6 +646,45 @@ impl super::Validator {
 
         Ok(())
     }
+    /// Checks that `result` is an unvisited, non-comparison [`AtomicResult`]
+    /// of the image's texel type `texel`, then marks it as emitted.
+    ///
+    /// [`AtomicResult`]: crate::Expression::AtomicResult
+    fn validate_image_atomic_result(
+        &mut self,
+        result: Handle<crate::Expression>,
+        texel: &crate::TypeInner,
+        context: &BlockContext,
+    ) -> Result<(), WithSpan<FunctionError>> {
+        let crate::Expression::AtomicResult { ty, comparison } = context.expressions[result] else {
+            return Err(AtomicError::InvalidResultExpression(result)
+                .with_span_handle(result, context.expressions)
+                .into_other());
+        };
+        if !self.needs_visit.remove(result) {
+            return Err(AtomicError::ResultAlreadyPopulated(result)
+                .with_span_handle(result, context.expressions)
+                .into_other());
+        }
+        if comparison {
+            return Err(AtomicError::ResultExpressionExchange(result)
+                .with_span_handle(result, context.expressions)
+                .into_other());
+        }
+        if context.types[ty].inner != *texel {
+            return Err(AtomicError::ResultTypeMismatch(result)
+                .with_span_handle(result, context.expressions)
+                .into_other());
+        }
+        // Only `min` and `max` are allowed on 64-bit texels, and Metal's
+        // versions of those return nothing.
+        if texel.scalar_width() == Some(8) {
+            return Err(FunctionError::WideImageAtomicResult(result)
+                .with_span_handle(result, context.expressions));
+        }
+        self.emit_expression(result, context)
+    }
+
     fn validate_subgroup_operation(
         &mut self,
         op: &crate::SubgroupOperation,
@@ -1296,6 +1337,7 @@ impl super::Validator {
                     array_index,
                     fun,
                     value,
+                    result,
                 } => {
                     let var = match *context.get_expression(image) {
                         crate::Expression::GlobalVariable(var_handle) => {
@@ -1473,6 +1515,9 @@ impl super::Validator {
                     if *context.resolve_type_inner(value, &self.valid_expression_set)? != value_ty {
                         return Err(FunctionError::InvalidImageAtomicValue(value)
                             .with_span_handle(value, context.expressions));
+                    }
+                    if let Some(result) = result {
+                        self.validate_image_atomic_result(result, &value_ty, context)?;
                     }
                 }
                 S::WorkGroupUniformLoad { pointer, result } => {

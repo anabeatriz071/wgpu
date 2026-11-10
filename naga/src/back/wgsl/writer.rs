@@ -884,7 +884,18 @@ impl<W: Write> Writer<W> {
                 array_index,
                 ref fun,
                 value,
+                result,
             } => {
+                // WGSL's `textureAtomic*` functions return nothing, so only an
+                // unused result can be written.
+                if let Some(result) = result {
+                    if func_ctx.info[result].ref_count > 0 {
+                        return Err(Error::Unsupported {
+                            kind: "image atomic result",
+                            value: format!("{fun:?}"),
+                        });
+                    }
+                }
                 write!(self.out, "{level}")?;
                 let fun_str = fun.to_wgsl();
                 write!(self.out, "textureAtomic{fun_str}(")?;

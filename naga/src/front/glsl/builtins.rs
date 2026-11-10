@@ -531,11 +531,10 @@ pub fn inject_builtin(
                     TypeInner::Scalar(Scalar { kind, width: 4 }),
                 ];
 
-                // Naga's image atomics return nothing, so these can only be
-                // called as statements.
-                let mut overload = module.add_builtin(args, MacroCall::ImageAtomic(fun));
-                overload.void = true;
-                declaration.overloads.push(overload)
+                // Like GLSL's, these return the texel's original value.
+                declaration
+                    .overloads
+                    .push(module.add_builtin(args, MacroCall::ImageAtomic(fun)))
             };
 
             texture_args_generator(variations.into(), f)
@@ -1749,7 +1748,7 @@ pub enum MacroCall {
     Atomic(AtomicFunction),
     /// `atomicCompSwap(inout mem, compare, data)`.
     AtomicCompSwap,
-    /// `imageAtomic*(image, coord, data)`, called as a statement.
+    /// `imageAtomic*(image, coord, data)`, which returns the texel's original value.
     ImageAtomic(AtomicFunction),
     /// SmoothStep needs a separate variant because it might need it's inputs
     /// to be splatted depending on the overload
@@ -2537,7 +2536,15 @@ impl MacroCall {
             MacroCall::ImageAtomic(fun) => {
                 frontend.allow_image_atomics(ctx, args[0], meta)?;
                 let comps = frontend.coordinate_components(ctx, args[0], args[1], None, meta)?;
-                ctx.emit_restart();
+                let ty = ctx.resolve_type_handle(args[2], meta)?;
+                ctx.emit_end();
+                let result = ctx.add_expression(
+                    Expression::AtomicResult {
+                        ty,
+                        comparison: false,
+                    },
+                    meta,
+                )?;
                 ctx.body.push(
                     crate::Statement::ImageAtomic {
                         image: args[0],
@@ -2545,10 +2552,12 @@ impl MacroCall {
                         array_index: comps.array_index,
                         fun,
                         value: args[2],
+                        result: Some(result),
                     },
                     meta,
                 );
-                return Ok(None);
+                ctx.emit_start();
+                result
             }
             MacroCall::Barrier => {
                 // GLSL's `barrier()` synchronizes the invocations of a workgroup and

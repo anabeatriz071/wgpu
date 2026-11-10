@@ -166,6 +166,84 @@ fn populate_atomic_result() {
     assert!(try_variant(Variant::None).is_err());
 }
 
+/// An `ImageAtomic` result must be a non-comparison `AtomicResult` of the
+/// image's 32-bit texel type.
+#[test]
+fn image_atomic_result() {
+    use naga::{Statement, Type, TypeInner};
+
+    /// Parses `source` and gives its first image atomic an `AtomicResult` of
+    /// type `scalar`, then validates it.
+    fn validate(
+        source: &str,
+        scalar: Scalar,
+        comparison: bool,
+    ) -> Result<ModuleInfo, naga::WithSpan<naga::valid::ValidationError>> {
+        let mut module = naga::front::wgsl::parse_str(source).unwrap();
+        let ty = module.types.insert(
+            Type {
+                name: None,
+                inner: TypeInner::Scalar(scalar),
+            },
+            naga::Span::default(),
+        );
+        let fun = &mut module.entry_points[0].function;
+        let handle = fun.expressions.append(
+            Expression::AtomicResult { ty, comparison },
+            naga::Span::default(),
+        );
+        let atomic = fun
+            .body
+            .iter_mut()
+            .find_map(|statement| match *statement {
+                Statement::ImageAtomic { ref mut result, .. } => Some(result),
+                _ => None,
+            })
+            .unwrap();
+        *atomic = Some(handle);
+        valid::Validator::new(ValidationFlags::all(), Capabilities::all()).validate(&module)
+    }
+
+    const ADD_32: &str = "
+        @group(0) @binding(0) var image: texture_storage_2d<r32uint, atomic>;
+        @compute @workgroup_size(1) fn main() { textureAtomicAdd(image, vec2(0), 1u); }
+    ";
+    const MAX_64: &str = "
+        @group(0) @binding(0) var image: texture_storage_2d<r64uint, atomic>;
+        @compute @workgroup_size(1) fn main() { textureAtomicMax(image, vec2(0), 1lu); }
+    ";
+
+    // `AtomicError` isn't public, so match its variant by name.
+    let atomic_error = |scalar, comparison| {
+        let error = validate(ADD_32, scalar, comparison)
+            .unwrap_err()
+            .into_inner();
+        let valid::ValidationError::EntryPoint {
+            source: valid::EntryPointError::Function(valid::FunctionError::InvalidAtomic(error)),
+            ..
+        } = error
+        else {
+            panic!("unexpected error: {error:?}");
+        };
+        format!("{error:?}")
+    };
+
+    validate(ADD_32, Scalar::U32, false).expect("module should validate");
+    assert!(atomic_error(Scalar::I32, false).starts_with("ResultTypeMismatch"));
+    assert!(atomic_error(Scalar::U32, true).starts_with("ResultExpressionExchange"));
+    assert!(matches!(
+        validate(MAX_64, Scalar::U64, false)
+            .unwrap_err()
+            .into_inner(),
+        valid::ValidationError::EntryPoint {
+            source: valid::EntryPointError::Function(valid::FunctionError::WideImageAtomicResult(
+                _
+            )),
+            ..
+        }
+    ));
+}
+
 #[test]
 fn populate_call_result() {
     use naga::{Module, Type, TypeInner};

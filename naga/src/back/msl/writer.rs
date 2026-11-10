@@ -1552,6 +1552,7 @@ impl<W: Write> Writer<W> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn put_image_atomic(
         &mut self,
         level: back::Level,
@@ -1559,11 +1560,24 @@ impl<W: Write> Writer<W> {
         address: &TexelAddress,
         fun: crate::AtomicFunction,
         value: Handle<crate::Expression>,
+        result: Option<Handle<crate::Expression>>,
         context: &StatementContext,
     ) -> BackendResult {
         write!(self.out, "{level}")?;
+        let wide = context.expression.resolve_type(value).scalar_width() == Some(8);
+        if let Some(result) = result {
+            // Metal's 64-bit texture `atomic_min`/`atomic_max` return nothing.
+            if wide {
+                return Err(Error::FeatureNotImplemented(
+                    "result of a 64-bit image atomic".to_string(),
+                ));
+            }
+            let name = Baked(result).to_string();
+            self.start_baking_expression(result, &context.expression, &name)?;
+            self.named_expressions.insert(result, name);
+        }
         self.put_expression(image, &context.expression, false)?;
-        let op = if context.expression.resolve_type(value).scalar_width() == Some(8) {
+        let op = if wide {
             fun.to_msl_64_bit()?
         } else {
             fun.to_msl()
@@ -1573,7 +1587,9 @@ impl<W: Write> Writer<W> {
         self.put_cast_to_uint_scalar_or_vector(address.coordinate, &context.expression)?;
         write!(self.out, ", ")?;
         self.put_expression(value, &context.expression, true)?;
-        writeln!(self.out, ");")?;
+        // Texture atomics return the original texel as a 4-component vector.
+        let component = if result.is_some() { ".x" } else { "" };
+        writeln!(self.out, "){component};")?;
 
         // Workaround for Apple Metal TBDR driver bug: fragment shader atomic
         // texture writes randomly drop unless followed by a standard texture
@@ -4258,6 +4274,7 @@ impl<W: Write> Writer<W> {
                     array_index,
                     fun,
                     value,
+                    result,
                 } => {
                     let address = TexelAddress {
                         coordinate,
@@ -4265,7 +4282,7 @@ impl<W: Write> Writer<W> {
                         sample: None,
                         level: None,
                     };
-                    self.put_image_atomic(level, image, &address, fun, value, context)?
+                    self.put_image_atomic(level, image, &address, fun, value, result, context)?
                 }
                 crate::Statement::WorkGroupUniformLoad { pointer, result } => {
                     self.write_barrier(crate::Barrier::WORK_GROUP, level)?;
