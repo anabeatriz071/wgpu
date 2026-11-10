@@ -26,6 +26,8 @@ Otherwise, we manage a pool of `VkFence` objects behind each `hal::Fence`.
 
 mod adapter;
 mod command;
+#[cfg(test)]
+mod compilation_guard_tests;
 pub mod conv;
 mod descriptor;
 mod device;
@@ -463,7 +465,8 @@ bitflags::bitflags!(
         const FORCE_FILL_BUFFER_WITH_SIZE_GREATER_4096_ALIGNED_OFFSET_16 = 0x4;
         /// Arm Mali, affected PowerVR and Qualcomm's proprietary Adreno drivers can fault when
         /// several threads compile shaders at once. Serialize shader-module and pipeline
-        /// creation per device.
+        /// creation, shader-module destruction and pipeline-cache creation, reads and
+        /// destruction per device.
         const SERIALIZE_SHADER_COMPILATION = 0x8;
     }
 );
@@ -523,7 +526,8 @@ struct DeviceShared {
     features: wgt::Features,
     render_passes: Mutex<FastHashMap<RenderPassKey, vk::RenderPass>>,
     sampler_cache: Mutex<sampler::SamplerCache>,
-    /// Held across shader-module and pipeline creation on drivers with unsafe concurrent compiles.
+    /// Held across the calls named by [`Workarounds::SERIALIZE_SHADER_COMPILATION`] on drivers
+    /// with unsafe concurrent compiles.
     shader_compilation: Mutex<()>,
     memory_allocations_counter: InternalCounter,
 
