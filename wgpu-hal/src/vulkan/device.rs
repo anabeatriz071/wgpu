@@ -25,6 +25,16 @@ impl super::DeviceShared {
             .then(|| self.shader_compilation.lock())
     }
 
+    /// Destroys the temporary modules of `stages`.
+    ///
+    /// Callers hold [`Self::shader_compilation_guard`], so on drivers that serialize compilation
+    /// the destruction never overlaps another thread's compile.
+    unsafe fn destroy_temp_modules(&self, stages: impl IntoIterator<Item = CompiledStage>) {
+        for module in stages.into_iter().filter_map(|stage| stage.temp_raw_module) {
+            unsafe { self.raw.destroy_shader_module(module, None) };
+        }
+    }
+
     /// Set the name of `object` to `name`.
     ///
     /// If `name` contains an interior null byte, then the name set will be truncated to that byte.
@@ -1926,6 +1936,7 @@ impl crate::Device for super::Device {
     unsafe fn destroy_shader_module(&self, module: super::ShaderModule) {
         match module {
             super::ShaderModule::Raw(raw) => {
+                let _serialized = self.shared.shader_compilation_guard();
                 unsafe { self.shared.raw.destroy_shader_module(raw, None) };
             }
             super::ShaderModule::Intermediate { .. } => {}
@@ -2179,46 +2190,24 @@ impl crate::Device for super::Device {
         let mut raw_vec = {
             profiling::scope!("vkCreateGraphicsPipelines");
             let _serialized = self.shared.shader_compilation_guard();
-            unsafe {
+            let created = unsafe {
                 self.shared
                     .raw
                     .create_graphics_pipelines(pipeline_cache, &vk_infos, None)
-                    .map_err(|(_, e)| super::map_pipeline_err(e))
-            }?
+            };
+            unsafe {
+                self.shared.destroy_temp_modules(
+                    [compiled_vs, compiled_ts, compiled_ms, compiled_fs]
+                        .into_iter()
+                        .flatten(),
+                )
+            };
+            created.map_err(|(_, e)| super::map_pipeline_err(e))?
         };
 
         let raw = raw_vec.pop().unwrap();
         if let Some(label) = desc.label {
             unsafe { self.shared.set_object_name(raw, label) };
-        }
-
-        if let Some(CompiledStage {
-            temp_raw_module: Some(raw_module),
-            ..
-        }) = compiled_vs
-        {
-            unsafe { self.shared.raw.destroy_shader_module(raw_module, None) };
-        }
-        if let Some(CompiledStage {
-            temp_raw_module: Some(raw_module),
-            ..
-        }) = compiled_ts
-        {
-            unsafe { self.shared.raw.destroy_shader_module(raw_module, None) };
-        }
-        if let Some(CompiledStage {
-            temp_raw_module: Some(raw_module),
-            ..
-        }) = compiled_ms
-        {
-            unsafe { self.shared.raw.destroy_shader_module(raw_module, None) };
-        }
-        if let Some(CompiledStage {
-            temp_raw_module: Some(raw_module),
-            ..
-        }) = compiled_fs
-        {
-            unsafe { self.shared.raw.destroy_shader_module(raw_module, None) };
         }
 
         self.counters.render_pipelines.add(1);
@@ -2263,21 +2252,18 @@ impl crate::Device for super::Device {
         let mut raw_vec = {
             profiling::scope!("vkCreateComputePipelines");
             let _serialized = self.shared.shader_compilation_guard();
-            unsafe {
+            let created = unsafe {
                 self.shared
                     .raw
                     .create_compute_pipelines(pipeline_cache, &vk_infos, None)
-                    .map_err(|(_, e)| super::map_pipeline_err(e))
-            }?
+            };
+            unsafe { self.shared.destroy_temp_modules([compiled]) };
+            created.map_err(|(_, e)| super::map_pipeline_err(e))?
         };
 
         let raw = raw_vec.pop().unwrap();
         if let Some(label) = desc.label {
             unsafe { self.shared.set_object_name(raw, label) };
-        }
-
-        if let Some(raw_module) = compiled.temp_raw_module {
-            unsafe { self.shared.raw.destroy_shader_module(raw_module, None) };
         }
 
         self.counters.compute_pipelines.add(1);
@@ -2401,31 +2387,23 @@ impl crate::Device for super::Device {
             .unwrap();
         let pipelines = {
             let _serialized = self.shared.shader_compilation_guard();
-            unsafe {
+            let created = unsafe {
                 fns.create_ray_tracing_pipelines(
                     vk::DeferredOperationKHR::null(),
                     pipeline_cache,
                     &create_infos,
                     None,
                 )
-                .map_err(|(_, e)| super::map_pipeline_err(e))
-            }?
+            };
+            unsafe {
+                self.shared.destroy_temp_modules(
+                    [compiled_ray_gen, compiled_miss]
+                        .into_iter()
+                        .chain(compiled_stages),
+                )
+            };
+            created.map_err(|(_, e)| super::map_pipeline_err(e))?
         };
-
-        if let Some(raw_module) = compiled_ray_gen.temp_raw_module {
-            unsafe { self.shared.raw.destroy_shader_module(raw_module, None) };
-        }
-
-        if let Some(raw_module) = compiled_miss.temp_raw_module {
-            unsafe { self.shared.raw.destroy_shader_module(raw_module, None) };
-        }
-
-        for raw_module in compiled_stages
-            .into_iter()
-            .flat_map(|stage| stage.temp_raw_module)
-        {
-            unsafe { self.shared.raw.destroy_shader_module(raw_module, None) };
-        }
 
         self.counters.ray_tracing_pipelines.add(1);
 
@@ -2475,8 +2453,11 @@ impl crate::Device for super::Device {
             info = info.initial_data(data)
         }
         profiling::scope!("vkCreatePipelineCache");
-        let raw = unsafe { self.shared.raw.create_pipeline_cache(&info, None) }
-            .map_err(super::map_host_device_oom_err)?;
+        let raw = {
+            let _serialized = self.shared.shader_compilation_guard();
+            unsafe { self.shared.raw.create_pipeline_cache(&info, None) }
+        }
+        .map_err(super::map_host_device_oom_err)?;
 
         Ok(super::PipelineCache { raw })
     }
@@ -2484,6 +2465,7 @@ impl crate::Device for super::Device {
         Some(self.shared.pipeline_cache_validation_key)
     }
     unsafe fn destroy_pipeline_cache(&self, cache: super::PipelineCache) {
+        let _serialized = self.shared.shader_compilation_guard();
         unsafe { self.shared.raw.destroy_pipeline_cache(cache.raw, None) }
     }
     unsafe fn create_query_set(
@@ -2637,6 +2619,7 @@ impl crate::Device for super::Device {
     }
 
     unsafe fn pipeline_cache_get_data(&self, cache: &super::PipelineCache) -> Option<Vec<u8>> {
+        let _serialized = self.shared.shader_compilation_guard();
         let data = unsafe { self.raw_device().get_pipeline_cache_data(cache.raw) };
         data.ok()
     }
