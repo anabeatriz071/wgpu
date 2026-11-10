@@ -58,6 +58,7 @@ Bottom level categories:
 #### Vulkan
 
 - Serialize shader-module and pipeline creation on PowerVR Rogue and BXM-8-256 GPUs to avoid concurrent compiler crashes.
+- Serialize shader-module and pipeline creation on Qualcomm's proprietary Adreno driver to avoid concurrent compiler crashes.
 - Fix crash on older Vulkan drivers when `poolSizeCount == 0`. By @lucasmerlin in [#10124](https://github.com/gfx-rs/wgpu/pull/10124).
 - Fall back to image robustness when robustness2 reports no robust image access. By @raphlinus in [#10291](https://github.com/gfx-rs/wgpu/pull/10291).
 

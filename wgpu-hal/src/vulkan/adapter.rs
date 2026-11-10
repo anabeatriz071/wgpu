@@ -2300,7 +2300,14 @@ impl super::Instance {
             transient_saves_memory: Some(supports_lazily_allocated),
             ..wgt::AdapterInfo::new(device_type, wgt::Backend::Vulkan)
         };
-        let workarounds = vendor_workarounds(info.vendor, &info.name);
+        let workarounds = vendor_workarounds(
+            info.vendor,
+            &info.name,
+            phd_capabilities
+                .driver
+                .as_ref()
+                .map(|driver| driver.driver_id),
+        );
 
         if let Some(driver) = phd_capabilities.driver {
             if driver.conformance_version.major == 0 {
@@ -3394,8 +3401,14 @@ fn supports_bgra8unorm_storage(
     }
 }
 
-/// Driver workarounds selected from the adapter's vendor and device name.
-fn vendor_workarounds(vendor_id: u32, device_name: &str) -> super::Workarounds {
+/// Driver workarounds selected from the adapter's vendor, device name and driver.
+///
+/// `driver_id` is `None` when the driver does not report `VK_KHR_driver_properties`.
+fn vendor_workarounds(
+    vendor_id: u32,
+    device_name: &str,
+    driver_id: Option<vk::DriverId>,
+) -> super::Workarounds {
     use crate::auxil::db;
 
     // TODO: only enable for particular devices
@@ -3412,7 +3425,10 @@ fn vendor_workarounds(vendor_id: u32, device_name: &str) -> super::Workarounds {
         super::Workarounds::SERIALIZE_SHADER_COMPILATION,
         vendor_id == db::arm::VENDOR
             || (vendor_id == db::imgtec::VENDOR
-                && (device_name.contains("Rogue") || device_name.contains("BXM-8-256"))),
+                && (device_name.contains("Rogue") || device_name.contains("BXM-8-256")))
+            // Qualcomm's proprietary compiler; Mesa's Turnip driver is unaffected.
+            || (vendor_id == db::qualcomm::VENDOR
+                && driver_id != Some(vk::DriverId::MESA_TURNIP)),
     );
     workarounds
 }
@@ -3608,7 +3624,7 @@ mod tests {
             "PowerVR B-Series BXM-8-256",
         ] {
             assert!(
-                vendor_workarounds(db::imgtec::VENDOR, name)
+                vendor_workarounds(db::imgtec::VENDOR, name, None)
                     .contains(Workarounds::SERIALIZE_SHADER_COMPILATION),
                 "{name}"
             );
@@ -3616,21 +3632,37 @@ mod tests {
     }
 
     #[test]
-    fn unaffected_adapters_keep_parallel_shader_compilation() {
-        assert!(vendor_workarounds(db::arm::VENDOR, "Mali-G57")
-            .contains(Workarounds::SERIALIZE_SHADER_COMPILATION));
-        for vendor in [
-            db::amd::VENDOR,
-            db::intel::VENDOR,
-            db::nvidia::VENDOR,
+    fn qualcomm_proprietary_driver_serializes_shader_compilation() {
+        for driver in [Some(vk::DriverId::QUALCOMM_PROPRIETARY), None] {
+            assert!(
+                vendor_workarounds(db::qualcomm::VENDOR, "Adreno (TM) 730", driver)
+                    .contains(Workarounds::SERIALIZE_SHADER_COMPILATION),
+                "{driver:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn turnip_keeps_parallel_shader_compilation() {
+        assert!(!vendor_workarounds(
             db::qualcomm::VENDOR,
-        ] {
-            assert!(!vendor_workarounds(vendor, "PowerVR Rogue GE8320")
+            "Turnip Adreno (TM) 730",
+            Some(vk::DriverId::MESA_TURNIP)
+        )
+        .contains(Workarounds::SERIALIZE_SHADER_COMPILATION));
+    }
+
+    #[test]
+    fn unaffected_adapters_keep_parallel_shader_compilation() {
+        assert!(vendor_workarounds(db::arm::VENDOR, "Mali-G57", None)
+            .contains(Workarounds::SERIALIZE_SHADER_COMPILATION));
+        for vendor in [db::amd::VENDOR, db::intel::VENDOR, db::nvidia::VENDOR] {
+            assert!(!vendor_workarounds(vendor, "PowerVR Rogue GE8320", None)
                 .contains(Workarounds::SERIALIZE_SHADER_COMPILATION));
         }
         for name in ["PowerVR DXT-48-1536", "PowerVR BXM-4-64", ""] {
             assert!(
-                !vendor_workarounds(db::imgtec::VENDOR, name)
+                !vendor_workarounds(db::imgtec::VENDOR, name, None)
                     .contains(Workarounds::SERIALIZE_SHADER_COMPILATION),
                 "{name}"
             );

@@ -461,8 +461,9 @@ bitflags::bitflags!(
         /// As such, we need to make sure all calls to vkCmdFillBuffer are aligned to 16 bytes
         /// if they cover a range of 4096 bytes or more.
         const FORCE_FILL_BUFFER_WITH_SIZE_GREATER_4096_ALIGNED_OFFSET_16 = 0x4;
-        /// Arm Mali and affected PowerVR drivers can fault when several threads compile
-        /// shaders at once. Serialize shader-module and pipeline creation per device.
+        /// Arm Mali, affected PowerVR and Qualcomm's proprietary Adreno drivers can fault when
+        /// several threads compile shaders at once. Serialize shader-module and pipeline
+        /// creation per device.
         const SERIALIZE_SHADER_COMPILATION = 0x8;
     }
 );
