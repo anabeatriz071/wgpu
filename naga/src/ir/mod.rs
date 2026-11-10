@@ -1834,11 +1834,13 @@ pub enum Expression {
     /// Result of an atomic operation.
     ///
     /// This expression must be referred to by the [`result`] field of exactly one
-    /// [`Atomic`][stmt] statement somewhere in the same function. Let `T` be the
-    /// scalar type contained by the [`Atomic`][type] value that the statement
-    /// operates on.
+    /// [`Atomic`][stmt] or [`ImageAtomic`] statement somewhere in the same
+    /// function. Let `T` be the scalar type contained by the [`Atomic`][type]
+    /// value that an [`Atomic`][stmt] statement operates on, or the texel
+    /// scalar type of the image that an [`ImageAtomic`] statement operates on.
     ///
     /// If `comparison` is `false`, then `ty` must be the scalar type `T`.
+    /// An [`ImageAtomic`] result never has `comparison` set.
     ///
     /// If `comparison` is `true`, then `ty` must be a [`Struct`] with two members:
     ///
@@ -1848,6 +1850,7 @@ pub enum Expression {
     ///
     /// [`result`]: Statement::Atomic::result
     /// [stmt]: Statement::Atomic
+    /// [`ImageAtomic`]: Statement::ImageAtomic
     /// [type]: TypeInner::Atomic
     /// [`Struct`]: TypeInner::Struct
     /// [`BOOL`]: Scalar::BOOL
@@ -2286,6 +2289,16 @@ pub enum Statement {
 
         /// The value with which to perform the atomic operation.
         value: Handle<Expression>,
+
+        /// An [`AtomicResult`] expression holding the texel's value before
+        /// the operation, if the shader uses it.
+        ///
+        /// Its type must be the image format's texel scalar type, and its
+        /// `comparison` flag must be `false`. This must be `None` for
+        /// 64-bit texels.
+        ///
+        /// [`AtomicResult`]: crate::Expression::AtomicResult
+        result: Option<Handle<Expression>>,
     },
     /// Load uniformly from a uniform pointer in the workgroup address space.
     ///

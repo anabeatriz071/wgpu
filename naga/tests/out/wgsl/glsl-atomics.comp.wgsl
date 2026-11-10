@@ -57,9 +57,9 @@ fn main_1() {
     storageBarrier();
     workgroupBarrier();
     textureBarrier();
-    let _e53 = known;
-    if _e53 {
-        let _e55 = atomicMin((&lightCount), 7i);
+    let _e54 = known;
+    if _e54 {
+        let _e56 = atomicMin((&lightCount), 7i);
         return;
     } else {
         return;

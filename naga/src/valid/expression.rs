@@ -1318,10 +1318,11 @@ impl super::Validator {
             }
             E::CallResult(function) => mod_info.functions[function.index()].available_stages,
             E::AtomicResult { .. } => {
-                // These expressions are validated when we check the `Atomic` statement
-                // that refers to them, because we have all the information we need at
-                // that point. The checks driven by `Validator::needs_visit` ensure
-                // that this expression is indeed visited by one `Atomic` statement.
+                // These expressions are validated when we check the `Atomic` or
+                // `ImageAtomic` statement that refers to them, because we have all the
+                // information we need at that point. The checks driven by
+                // `Validator::needs_visit` ensure that this expression is indeed
+                // visited by one such statement.
                 ShaderStages::all()
             }
             E::WorkGroupUniformLoadResult { ty } => {

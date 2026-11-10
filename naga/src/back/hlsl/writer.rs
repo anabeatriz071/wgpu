@@ -2862,8 +2862,25 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
                 array_index,
                 fun,
                 value,
+                result,
             } => {
                 write!(self.out, "{level}")?;
+                // `Interlocked*` returns the texel's original value through an
+                // optional `out` argument.
+                let result_name = if let Some(result) = result {
+                    let name = Baked(result).to_string();
+                    match func_ctx.info[result].ty {
+                        proc::TypeResolution::Handle(handle) => self.write_type(module, handle)?,
+                        proc::TypeResolution::Value(ref value) => {
+                            self.write_value_type(module, value)?
+                        }
+                    };
+                    write!(self.out, " {name}; ")?;
+                    self.named_expressions.insert(result, name.clone());
+                    Some(name)
+                } else {
+                    None
+                };
 
                 let fun_str = fun.to_hlsl_suffix();
                 write!(self.out, "Interlocked{fun_str}(")?;
@@ -2880,6 +2897,9 @@ impl<'a, W: fmt::Write> super::Writer<'a, W> {
                 write!(self.out, "],")?;
 
                 self.write_expr(module, value, func_ctx)?;
+                if let Some(name) = result_name {
+                    write!(self.out, ", {name}")?;
+                }
                 writeln!(self.out, ");")?;
             }
             Statement::WorkGroupUniformLoad { pointer, result } => {

@@ -1,0 +1,108 @@
+; SPIR-V
+; Version: 1.0
+; Generator: rspirv
+; Bound: 83
+OpCapability Shader
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint GLCompute %77 "main" %74
+OpExecutionMode %77 LocalSize 16 1 1
+OpDecorate %8 DescriptorSet 0
+OpDecorate %8 Binding 0
+OpDecorate %10 DescriptorSet 0
+OpDecorate %10 Binding 1
+OpDecorate %12 DescriptorSet 0
+OpDecorate %12 Binding 2
+OpDecorate %74 BuiltIn LocalInvocationIndex
+%2 = OpTypeVoid
+%4 = OpTypeInt 32 0
+%3 = OpTypeImage %4 2D 0 0 0 2 R32ui
+%6 = OpTypeInt 32 1
+%5 = OpTypeVector %6 2
+%7 = OpTypeImage %6 2D 0 0 0 2 R32i
+%9 = OpTypePointer UniformConstant %3
+%8 = OpVariable  %9  UniformConstant
+%11 = OpTypePointer UniformConstant %7
+%10 = OpVariable  %11  UniformConstant
+%12 = OpVariable  %9  UniformConstant
+%14 = OpTypePointer Private %4
+%15 = OpConstantNull  %4
+%13 = OpVariable  %14  Private %15
+%18 = OpTypeFunction %2
+%22 = OpConstant  %6  0
+%23 = OpConstantComposite  %5  %22 %22
+%24 = OpConstant  %4  1
+%25 = OpConstant  %6  1
+%26 = OpConstantComposite  %5  %25 %22
+%27 = OpConstant  %6  2
+%28 = OpConstantComposite  %5  %27 %22
+%29 = OpConstant  %4  4294967295
+%30 = OpConstant  %6  3
+%31 = OpConstantComposite  %5  %30 %22
+%33 = OpTypePointer Function %4
+%34 = OpConstantNull  %4
+%36 = OpTypePointer Function %6
+%37 = OpConstantNull  %6
+%39 = OpConstantNull  %4
+%41 = OpTypePointer Image %4
+%43 = OpConstant  %4  0
+%47 = OpTypePointer Image %6
+%71 = OpTypeVector %4 4
+%75 = OpTypePointer Input %4
+%74 = OpVariable  %75  Input
+%17 = OpFunction  %2  None %18
+%16 = OpLabel
+%32 = OpVariable  %33  Function %34
+%35 = OpVariable  %36  Function %37
+%38 = OpVariable  %33  Function %39
+%19 = OpLoad  %3  %8
+%20 = OpLoad  %7  %10
+%21 = OpLoad  %3  %12
+OpBranch %40
+%40 = OpLabel
+%42 = OpImageTexelPointer  %41  %8 %23 %43
+%44 = OpAtomicIAdd  %4  %42 %25 %43 %24
+OpStore %32 %44
+%45 = OpLoad  %4  %13
+%46 = OpBitcast  %6  %45
+%48 = OpImageTexelPointer  %47  %10 %23 %43
+%49 = OpAtomicSMin  %6  %48 %25 %43 %46
+OpStore %35 %49
+%50 = OpLoad  %4  %32
+%51 = OpShiftLeftLogical  %4  %24 %50
+%52 = OpImageTexelPointer  %41  %8 %26 %43
+%53 = OpAtomicOr  %4  %52 %25 %43 %51
+%54 = OpImageTexelPointer  %41  %8 %28 %43
+%55 = OpAtomicAnd  %4  %54 %25 %43 %29
+%56 = OpBitwiseAnd  %4  %53 %55
+%57 = OpLoad  %4  %32
+%58 = OpImageTexelPointer  %41  %8 %31 %43
+%59 = OpAtomicXor  %4  %58 %25 %43 %57
+%60 = OpBitwiseXor  %4  %56 %59
+OpStore %38 %60
+%61 = OpLoad  %6  %35
+%62 = OpImageTexelPointer  %47  %10 %26 %43
+%63 = OpAtomicSMax  %6  %62 %25 %43 %61
+%64 = OpLoad  %4  %32
+%65 = OpBitcast  %6  %64
+%66 = OpCompositeConstruct  %5  %65 %22
+%67 = OpLoad  %4  %38
+%68 = OpLoad  %6  %35
+%69 = OpBitcast  %4  %68
+%70 = OpIAdd  %4  %67 %69
+%72 = OpCompositeConstruct  %71  %70 %70 %70 %70
+OpImageWrite %21 %66 %72
+OpReturn
+OpFunctionEnd
+%77 = OpFunction  %2  None %18
+%73 = OpLabel
+%76 = OpLoad  %4  %74
+%78 = OpLoad  %3  %8
+%79 = OpLoad  %7  %10
+%80 = OpLoad  %3  %12
+OpBranch %81
+%81 = OpLabel
+OpStore %13 %76
+%82 = OpFunctionCall  %2  %17
+OpReturn
+OpFunctionEnd

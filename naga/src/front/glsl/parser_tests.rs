@@ -645,6 +645,45 @@ fn regression_image_atomics_require_read_write() {
     }
 }
 
+/// `imageAtomic*` calls return the texel's original value, as in GLSL.
+#[test]
+fn image_atomics_return_the_original_value() {
+    let cases = [
+        (
+            ShaderStage::Compute,
+            "layout(local_size_x = 4) in;\nlayout(r32ui, binding = 0) uniform uimage2D counter;\nlayout(r32i, binding = 1) uniform iimage2D slots;\nvoid main() { uint slot = imageAtomicAdd(counter, ivec2(0), 1u); imageStore(slots, ivec2(int(slot), 0), ivec4(imageAtomicMax(slots, ivec2(0), 3))); }",
+        ),
+        (
+            ShaderStage::Fragment,
+            "layout(r32ui, binding = 0) uniform uimage2D counter;\nlayout(location = 0) out vec4 color;\nvoid main() { color = vec4(float(imageAtomicOr(counter, ivec2(gl_FragCoord.xy), 2u) & 1u)); }",
+        ),
+    ];
+    for (stage, body) in cases {
+        let source = alloc::format!("#version 450\n{body}");
+        let module = Frontend::default()
+            .parse(&Options::from(stage), &source)
+            .unwrap();
+        let info = crate::valid::Validator::new(
+            crate::valid::ValidationFlags::all(),
+            crate::valid::Capabilities::all(),
+        )
+        .validate(&module)
+        .unwrap();
+        // The shader's `main` is a function that the entry point calls.
+        let mut results = 0;
+        for (handle, function) in module.functions.iter() {
+            for statement in function.body.iter() {
+                if let crate::Statement::ImageAtomic { result, .. } = *statement {
+                    let result = result.expect("image atomic without a result");
+                    assert!(info[handle][result].ref_count > 0, "{source}");
+                    results += 1;
+                }
+            }
+        }
+        assert_eq!(results, body.matches("imageAtomic").count(), "{source}");
+    }
+}
+
 /// Check that gather layers round up at half integers before integer conversion.
 #[test]
 fn texture_gather_array_layer_rounding() {
