@@ -54,6 +54,10 @@ Bottom level categories:
 
 ### Bug Fixes
 
+#### DX12
+
+- Preserve empty TLAS semantics using an inactive instance, avoiding a WARP divide-by-zero when the final live instance is removed.
+
 #### Metal
 
 - Make texture atomics visible to later passes on drivers that otherwise read the value from before them, such as Apple's paravirtual GPU.

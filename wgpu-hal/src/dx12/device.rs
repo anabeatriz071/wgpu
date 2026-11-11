@@ -2473,7 +2473,8 @@ impl crate::Device for super::Device {
                 inputs0 = Direct3D12::D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS_0 {
                     InstanceDescs: 0,
                 };
-                num_desc = instances.count;
+                // Empty builds use one inactive instance to avoid WARP's zero-count fault.
+                num_desc = instances.count.max(1);
             }
             AccelerationStructureEntries::Triangles(triangles) => {
                 geometry_desc = Vec::with_capacity(triangles.len());

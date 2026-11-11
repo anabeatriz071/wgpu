@@ -1642,18 +1642,24 @@ impl crate::CommandEncoder for super::CommandEncoder {
             let num_desc;
             match descriptor.entries {
                 AccelerationStructureEntries::Instances(instances) => {
-                    let desc_address = unsafe {
-                        instances
-                            .buffer
-                            .expect("needs buffer to build")
-                            .resource
-                            .GetGPUVirtualAddress()
-                    } + instances.offset as u64;
+                    // A null BLAS address and zero mask describe an inactive instance.
+                    // WARP faults when given a literal zero-instance build.
+                    let desc_address = if instances.count == 0 {
+                        unsafe { self.shared.zero_buffer.GetGPUVirtualAddress() }
+                    } else {
+                        (unsafe {
+                            instances
+                                .buffer
+                                .expect("needs buffer to build")
+                                .resource
+                                .GetGPUVirtualAddress()
+                        }) + instances.offset as u64
+                    };
                     ty = Direct3D12::D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
                     inputs0 = Direct3D12::D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS_0 {
                         InstanceDescs: desc_address,
                     };
-                    num_desc = instances.count;
+                    num_desc = instances.count.max(1);
                 }
                 AccelerationStructureEntries::Triangles(triangles) => {
                     geometry_desc = Vec::with_capacity(triangles.len());
