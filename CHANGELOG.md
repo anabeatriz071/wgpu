@@ -44,6 +44,10 @@ Bottom level categories:
 
 ### Added/New Features
 
+#### DX12
+
+- Add unsafe borrowed native command-list and acceleration-structure resource accessors for synchronized backend interop. Existing APIs are unchanged.
+
 #### naga
 
 - Add GLSL frontend configuration for typed opaque aliases and independent builtin overload families, and support stores through storage-image function parameters.

@@ -1003,6 +1003,19 @@ pub struct CommandEncoder {
     counters: Arc<wgt::HalCounters>,
 }
 
+impl CommandEncoder {
+    /// Borrows the currently recording native command list, if encoding has begun.
+    ///
+    /// # Safety
+    /// The caller must not close, reset, destroy or retain the list beyond this borrow.
+    /// Use a dedicated encoder for native pipeline commands; after recording them,
+    /// only end encoding. The caller owns resource transitions and must retain every
+    /// referenced resource and native pipeline until GPU completion.
+    pub unsafe fn raw_command_list(&mut self) -> Option<&Direct3D12::ID3D12GraphicsCommandList> {
+        self.list.as_ref()
+    }
+}
+
 unsafe impl Send for CommandEncoder {}
 unsafe impl Sync for CommandEncoder {}
 
@@ -1409,6 +1422,18 @@ impl crate::DynPipelineCache for PipelineCache {}
 pub struct AccelerationStructure {
     resource: Direct3D12::ID3D12Resource,
     allocation: suballocation::Allocation,
+}
+
+impl AccelerationStructure {
+    /// Borrows the native acceleration-structure storage for backend interop.
+    ///
+    /// # Safety
+    /// The caller must not mutate, map or destroy this resource, or retain it beyond
+    /// this borrow. Keep the acceleration structure and its referenced BLASes alive
+    /// until native GPU work completes; the caller owns synchronization and barriers.
+    pub unsafe fn raw_resource(&self) -> &Direct3D12::ID3D12Resource {
+        &self.resource
+    }
 }
 
 impl crate::DynAccelerationStructure for AccelerationStructure {}
