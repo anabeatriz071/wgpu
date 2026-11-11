@@ -84,6 +84,7 @@ mod dcomp;
 mod descriptor;
 mod device;
 mod device_creation;
+mod empty_tlas;
 mod instance;
 mod pipeline_desc;
 mod sampler;
@@ -752,6 +753,7 @@ struct CommandSignatures {
 struct DeviceShared {
     adapter: DxgiAdapter,
     zero_buffer: Direct3D12::ID3D12Resource,
+    empty_tlas: Option<empty_tlas::EmptyTlas>,
     cmd_signatures: CommandSignatures,
     heap_views: descriptor::GeneralHeap,
     sampler_heap: sampler::SamplerHeap,

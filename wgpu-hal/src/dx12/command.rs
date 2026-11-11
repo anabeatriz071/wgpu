@@ -1642,10 +1642,17 @@ impl crate::CommandEncoder for super::CommandEncoder {
             let num_desc;
             match descriptor.entries {
                 AccelerationStructureEntries::Instances(instances) => {
-                    // A null BLAS address and zero mask describe an inactive instance.
-                    // WARP faults when given a literal zero-instance build.
+                    // WARP requires a non-empty descriptor with a valid BLAS, even for a masked-out scene.
                     let desc_address = if instances.count == 0 {
-                        unsafe { self.shared.zero_buffer.GetGPUVirtualAddress() }
+                        let empty = self
+                            .shared
+                            .empty_tlas
+                            .as_ref()
+                            .expect("ray tracing feature enabled");
+                        unsafe {
+                            empty.build(&list);
+                            empty.instances.GetGPUVirtualAddress()
+                        }
                     } else {
                         (unsafe {
                             instances

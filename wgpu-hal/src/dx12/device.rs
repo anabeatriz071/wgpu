@@ -136,7 +136,13 @@ impl super::Device {
             None
         };
 
+        let empty_tlas = if features.contains(wgt::Features::EXPERIMENTAL_RAY_QUERY) {
+            Some(super::empty_tlas::EmptyTlas::new(&raw)?)
+        } else {
+            None
+        };
         let shared = super::DeviceShared {
+            empty_tlas,
             adapter,
             zero_buffer,
             cmd_signatures: super::CommandSignatures {
