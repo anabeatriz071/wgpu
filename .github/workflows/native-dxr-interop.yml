@@ -1,0 +1,21 @@
+name: Native DXR interop checks
+on:
+  push:
+    branches: [native-dxr-interop]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dx12:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a
+      - name: Check formatting
+        run: cargo fmt --check -p wgpu-hal
+      - name: Lint and compile the Windows HAL tests
+        run: cargo clippy --locked -p wgpu-hal --no-default-features --features dx12 --tests -- -D warnings
